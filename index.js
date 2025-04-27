@@ -58,7 +58,7 @@ app.use(cors());
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: '*', // Allow all (you can restrict later)
+    origin: 'https://react-video-calling-app1.netlify.app/',
     methods: ['GET', 'POST'],
   }
 });
