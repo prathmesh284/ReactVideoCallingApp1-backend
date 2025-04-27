@@ -60,6 +60,8 @@ const io = new Server(server, {
   cors: {
     origin: 'https://react-video-calling-app1.netlify.app/',
     methods: ['GET', 'POST'],
+    allowedHeaders: ["Content-Type"],
+    credentials: true
   }
 });
 
