@@ -55,7 +55,13 @@ const cors = require('cors');
 
 // Basic express setup
 const app = express();
-app.use(cors());
+// app.use(cors());
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
+
 app.use(express.json());
 
 // HTTP Server
@@ -64,10 +70,11 @@ const server = http.createServer(app);
 // Socket.IO server
 const io = new Server(server, {
   cors: {
-    origin: '*', // Allow all origins (you can restrict it later)
-    methods: ['GET', 'POST'],
+    origin: '*',
+    methods: ['GET', 'POST']
   },
-  transports: ['polling', 'websocket'], // VERY important
+  transports: ['websocket', 'polling'],
+  allowEIO3: true, // <- important if client lib is old
 });
 
 // --- SOCKET EVENTS --- //
