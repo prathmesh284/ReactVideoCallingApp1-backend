@@ -53,65 +53,62 @@ const { Server } = require('socket.io');
 const cors = require('cors');
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: '*',  // allow all origins (or specify your frontend URL for stricter control)
+}));
 
 const server = http.createServer(app);
+
 const io = new Server(server, {
   cors: {
-    origin: 'https://react-video-calling-app1.netlify.app/',
-    methods: ['GET', 'POST'],
-    allowedHeaders: ["Content-Type"],
-    credentials: true
-  }
+    origin: '*',
+    methods: ['GET', 'POST']
+  },
+  transports: ['websocket'],
+  allowEIO3: true, // Support older clients if needed
 });
 
 const rooms = {};
 
-io.on('connection', (socket) => {
-  console.log(`🔌 User connected: ${socket.id}`);
+io.on('connection', socket => {
+  console.log('New client connected: ', socket.id);
 
-  socket.on('join', (roomId) => {
-    console.log(`📥 ${socket.id} joined room: ${roomId}`);
-    socket.join(roomId);
-
-    if (!rooms[roomId]) {
-      rooms[roomId] = [];
+  socket.on('join-room', ({ roomId }) => {
+    if (rooms[roomId]) {
+      rooms[roomId].push(socket.id);
+    } else {
+      rooms[roomId] = [socket.id];
     }
-    rooms[roomId].push(socket.id);
 
     const otherUser = rooms[roomId].find(id => id !== socket.id);
     if (otherUser) {
-      socket.emit('other-user', { otherUser });
-      socket.to(otherUser).emit('user-joined', { newUser: socket.id });
+      socket.emit('other-user', otherUser);
+      socket.to(otherUser).emit('user-joined', socket.id);
     }
   });
 
-  socket.on('offer', ({ offer, room, to }) => {
-    console.log(`📡 Offer from ${socket.id} to ${to}`);
-    socket.to(to).emit('offer', { offer, from: socket.id });
+  socket.on('offer', payload => {
+    io.to(payload.target).emit('offer', { sdp: payload.sdp, caller: socket.id });
   });
 
-  socket.on('answer', ({ answer, room, to }) => {
-    console.log(`📡 Answer from ${socket.id} to ${to}`);
-    socket.to(to).emit('answer', { answer, from: socket.id });
+  socket.on('answer', payload => {
+    io.to(payload.target).emit('answer', { sdp: payload.sdp });
   });
 
-  socket.on('ice-candidate', ({ candidate, to }) => {
-    console.log(`🧊 ICE Candidate from ${socket.id} to ${to}`);
-    socket.to(to).emit('ice-candidate', { candidate, from: socket.id });
+  socket.on('ice-candidate', payload => {
+    io.to(payload.target).emit('ice-candidate', { candidate: payload.candidate });
   });
 
   socket.on('disconnect', () => {
-    console.log(`❌ User disconnected: ${socket.id}`);
     for (const roomId in rooms) {
       rooms[roomId] = rooms[roomId].filter(id => id !== socket.id);
       if (rooms[roomId].length === 0) {
         delete rooms[roomId];
       }
     }
+    console.log('Client disconnected:', socket.id);
   });
 });
 
-server.listen(5000, () => {
-  console.log('✅ Signaling server running on port 5000');
-});
+const PORT = process.env.PORT || 5000;
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
