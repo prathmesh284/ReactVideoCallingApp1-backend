@@ -47,68 +47,78 @@
 
 
 
+// server.js
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
 
+// Basic express setup
 const app = express();
-app.use(cors({
-  origin: '*',  // allow all origins (or specify your frontend URL for stricter control)
-}));
+app.use(cors());
+app.use(express.json());
 
+// HTTP Server
 const server = http.createServer(app);
 
+// Socket.IO server
 const io = new Server(server, {
   cors: {
-    origin: '*',
-    methods: ['GET', 'POST']
+    origin: '*', // Allow all origins (you can restrict it later)
+    methods: ['GET', 'POST'],
   },
-  transports: ['websocket'],
-  allowEIO3: true, // Support older clients if needed
+  transports: ['polling', 'websocket'], // VERY important
 });
 
-const rooms = {};
+// --- SOCKET EVENTS --- //
 
-io.on('connection', socket => {
-  console.log('New client connected: ', socket.id);
+io.on('connection', (socket) => {
+  console.log('⚡ New client connected:', socket.id);
 
-  socket.on('join-room', ({ roomId }) => {
-    if (rooms[roomId]) {
-      rooms[roomId].push(socket.id);
-    } else {
-      rooms[roomId] = [socket.id];
-    }
-
-    const otherUser = rooms[roomId].find(id => id !== socket.id);
-    if (otherUser) {
-      socket.emit('other-user', otherUser);
-      socket.to(otherUser).emit('user-joined', socket.id);
-    }
+  socket.on('join', (roomId) => {
+    console.log(`🛡️ User ${socket.id} joining room: ${roomId}`);
+    socket.join(roomId);
+    socket.to(roomId).emit('ready'); // Notify others someone joined
   });
 
-  socket.on('offer', payload => {
-    io.to(payload.target).emit('offer', { sdp: payload.sdp, caller: socket.id });
+  socket.on('offer', ({ offer, roomId }) => {
+    console.log('📨 Offer received and sent to room:', roomId);
+    socket.to(roomId).emit('offer', offer);
   });
 
-  socket.on('answer', payload => {
-    io.to(payload.target).emit('answer', { sdp: payload.sdp });
+  socket.on('answer', ({ answer, roomId }) => {
+    console.log('📨 Answer received and sent to room:', roomId);
+    socket.to(roomId).emit('answer', { answer });
   });
 
-  socket.on('ice-candidate', payload => {
-    io.to(payload.target).emit('ice-candidate', { candidate: payload.candidate });
+  socket.on('ice-candidate', ({ candidate, roomId }) => {
+    console.log('🧊 ICE candidate received and sent to room:', roomId);
+    socket.to(roomId).emit('ice-candidate', { candidate });
+  });
+
+  socket.on('screen-sharing', ({ screenStream, roomId }) => {
+    console.log('🖥️ Screen sharing triggered.');
+    socket.to(roomId).emit('screen-sharing', screenStream);
+  });
+
+  socket.on('leave', (roomId) => {
+    console.log(`🏃‍♂️ User ${socket.id} leaving room: ${roomId}`);
+    socket.leave(roomId);
+    socket.to(roomId).emit('leave');
   });
 
   socket.on('disconnect', () => {
-    for (const roomId in rooms) {
-      rooms[roomId] = rooms[roomId].filter(id => id !== socket.id);
-      if (rooms[roomId].length === 0) {
-        delete rooms[roomId];
-      }
-    }
-    console.log('Client disconnected:', socket.id);
+    console.log('❌ Client disconnected:', socket.id);
   });
 });
 
+// --- TEST ENDPOINT (optional) --- //
+app.get('/', (req, res) => {
+  res.send('🚀 Video Call Signaling Server Running.');
+});
+
+// --- SERVER START --- //
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+server.listen(PORT, () => {
+  console.log(`🌍 Server running on http://localhost:${PORT}`);
+});
