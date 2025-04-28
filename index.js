@@ -124,6 +124,11 @@ app.get('/', (req, res) => {
   res.send('🚀 Video Call Signaling Server Running.');
 });
 
+// Health check endpoint for Railway
+app.get('/healthz', (req, res) => {
+  res.status(200).json({ status: 'ok' });
+});
+
 // --- SERVER START --- //
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, '0.0.0.0',() => {
