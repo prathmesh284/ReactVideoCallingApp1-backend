@@ -82,10 +82,14 @@ const io = new Server(server, {
 io.on('connection', (socket) => {
   console.log('⚡ New client connected:', socket.id);
 
-  socket.on('join', (roomId) => {
-    console.log(`🛡️ User ${socket.id} joining room: ${roomId}`);
+  socket.on('join-room', ({ roomId }) => {
     socket.join(roomId);
-    socket.to(roomId).emit('ready'); // Notify others someone joined
+    const clients = Array.from(io.sockets.adapter.rooms.get(roomId) || []);
+    console.log(`Room ${roomId} clients:`, clients);
+
+    if (clients.length > 1) {
+      socket.to(roomId).emit('other-user');
+    }
   });
 
   socket.on('offer', ({ offer, roomId }) => {
@@ -133,15 +137,4 @@ app.get('/healthz', (req, res) => {
 const PORT = process.env.PORT || 8080;
 server.listen(PORT, '0.0.0.0',() => {
   console.log(`🌍 Server running on http://0.0.0.0:${PORT}`);
-});
-
-console.log('🚀 Starting server...');
-console.log('Environment variables:', process.env);
-
-process.on('uncaughtException', err => {
-  console.error('🔥 Uncaught Exception:', err);
-});
-
-process.on('unhandledRejection', err => {
-  console.error('🔥 Unhandled Rejection:', err);
 });
