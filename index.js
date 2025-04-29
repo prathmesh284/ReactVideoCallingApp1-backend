@@ -83,15 +83,23 @@ io.on('connection', (socket) => {
   console.log('⚡ New client connected:', socket.id);
 
   socket.on('join-room', ({ roomId }) => {
+    const room = io.sockets.adapter.rooms.get(roomId) || new Set();
+  
+    if (room.has(socket.id)) {
+      console.log(`🚫 Socket ${socket.id} already in room ${roomId}, ignoring duplicate join.`);
+      return;
+    }
+  
     socket.join(roomId);
-    const clients = Array.from(io.sockets.adapter.rooms.get(roomId) || []);
+    console.log(`✅ Socket ${socket.id} joined room ${roomId}`);
+  
+    const clients = Array.from(io.sockets.adapter.rooms.get(roomId));
     console.log(`Room ${roomId} clients:`, clients);
   
-    // Inform the new user about the existing one
-    if (clients.length > 1) {
-      const otherUserId = clients.find(id => id !== socket.id);
-      socket.emit('user-joined', otherUserId); // 👈 tell the new client
-      socket.to(otherUserId).emit('user-joined', socket.id); // 👈 tell the existing client
+    if (clients.length === 2) {
+      const [firstClient, secondClient] = clients;
+      io.to(firstClient).emit('user-joined', secondClient);
+      io.to(secondClient).emit('user-joined', firstClient);
     }
   });
   
