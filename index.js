@@ -1,137 +1,79 @@
-// const express = require('express');
-// const http = require('http');
-// const socketIo = require('socket.io');
-// const cors = require('cors'); // Import the cors package
-
-// const app = express();
-// const server = http.createServer(app);
-// const io = socketIo(server);
-
-// const PORT = 5000;
-
-// // Enable CORS for all domains, or specify localhost:3000 to restrict to your frontend
-// app.use(cors({
-//   origin: 'http://localhost:3000', // Allow only your frontend (localhost:3000) to connect
-//   methods: ['GET', 'POST'],
-//   allowedHeaders: ['Content-Type'],
-// }));
-
-// io.on('connection', (socket) => {
-//   console.log('a user connected');
-  
-//   socket.on('join', (roomId) => {
-//     socket.join(roomId);
-//     console.log(`User joined room: ${roomId}`);
-//   });
-
-//   socket.on('offer', (offer, roomId) => {
-//     socket.to(roomId).emit('offer', offer);
-//   });
-
-//   socket.on('answer', (answer, roomId) => {
-//     socket.to(roomId).emit('answer', answer);
-//   });
-
-//   socket.on('ice-candidate', (candidate, roomId) => {
-//     socket.to(roomId).emit('ice-candidate', candidate);
-//   });
-
-//   socket.on('disconnect', () => {
-//     console.log('user disconnected');
-//   });
-// });
-
-// server.listen(PORT, () => {
-//   console.log(`Server running on port ${PORT}`);
-// });
-
-
-
-// server.js
+//server.js
 const express = require('express');
 const http = require('http');
-const { Server } = require('socket.io');
+const socketIo = require('socket.io');
 const cors = require('cors');
 
-// Basic express setup
 const app = express();
-// app.use(cors());
-app.use(cors({
-  origin: '*',
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-}));
-
-app.use(express.json());
-
-// HTTP Server
+app.use(cors());
 const server = http.createServer(app);
-
-// Socket.IO server
-const io = new Server(server, {
+const io = socketIo(server, {
   cors: {
     origin: '*',
-    methods: ['GET', 'POST']
+    methods: ['GET', 'POST'],
   },
-  transports: ['websocket', 'polling'],
-  allowEIO3: true, // <- important if client lib is old
 });
 
-// --- SOCKET EVENTS --- //
+const socketToRoom = {};
+const roomToSockets = {};
 
 io.on('connection', (socket) => {
-  console.log('⚡ New client connected:', socket.id);
+  console.log(`🔌 New socket connected: ${socket.id}`);
 
   socket.on('join-room', ({ roomId }) => {
-    const room = io.sockets.adapter.rooms.get(roomId) || new Set();
-  
-    if (room.has(socket.id)) {
-      console.log(`🚫 Socket ${socket.id} already in room ${roomId}, ignoring duplicate join.`);
-      return;
+    const room = roomToSockets[roomId] || [];
+
+    // Prevent duplicate joins
+    if (!room.includes(socket.id)) {
+      if (room.length >= 2) {
+        socket.emit('room-full');
+        return;
+      }
+
+      room.push(socket.id);
+      roomToSockets[roomId] = room;
+      socketToRoom[socket.id] = roomId;
+      socket.join(roomId);
     }
-  
-    socket.join(roomId);
-    console.log(`✅ Socket ${socket.id} joined room ${roomId}`);
-  
-    const clients = Array.from(io.sockets.adapter.rooms.get(roomId));
-    console.log(`Room ${roomId} clients:`, clients);
-  
-    if (clients.length === 2) {
-      const [firstClient, secondClient] = clients;
-      io.to(firstClient).emit('user-joined', secondClient);
-      io.to(secondClient).emit('user-joined', firstClient);
+
+    // Notify existing users in room
+    const otherUser = room.find(id => id !== socket.id);
+    if (otherUser) {
+      socket.emit('user-joined', otherUser);
+      io.to(otherUser).emit('user-joined', socket.id);
     }
-  });
-  
 
-  socket.on('offer', ({ offer, roomId }) => {
-    console.log('📨 Offer received and sent to room:', roomId);
-    socket.to(roomId).emit('offer', offer);
+    console.log(`✅ ${socket.id} joined room ${roomId}`);
   });
 
-  socket.on('answer', ({ answer, roomId }) => {
-    console.log('📨 Answer received and sent to room:', roomId);
-    socket.to(roomId).emit('answer', { answer });
+  socket.on('send-offer', ({ offer, to }) => {
+    io.to(to).emit('receive-offer', { offer, from: socket.id });
   });
 
-  socket.on('ice-candidate', ({ candidate, roomId }) => {
-    console.log('🧊 ICE candidate received and sent to room:', roomId);
-    socket.to(roomId).emit('ice-candidate', { candidate });
+  socket.on('send-answer', ({ answer, to }) => {
+    io.to(to).emit('receive-answer', { answer, from: socket.id });
   });
 
-  socket.on('screen-sharing', ({ screenStream, roomId }) => {
-    console.log('🖥️ Screen sharing triggered.');
-    socket.to(roomId).emit('screen-sharing', screenStream);
-  });
-
-  socket.on('leave', (roomId) => {
-    console.log(`🏃‍♂️ User ${socket.id} leaving room: ${roomId}`);
-    socket.leave(roomId);
-    socket.to(roomId).emit('leave');
+  socket.on('send-ice-candidate', ({ candidate, to }) => {
+    io.to(to).emit('receive-ice-candidate', { candidate, from: socket.id });
   });
 
   socket.on('disconnect', () => {
-    console.log('❌ Client disconnected:', socket.id);
+    const roomId = socketToRoom[socket.id];
+    const room = roomToSockets[roomId];
+    if (room) {
+      const index = room.indexOf(socket.id);
+      if (index !== -1) {
+        room.splice(index, 1);
+      }
+      if (room.length === 0) {
+        delete roomToSockets[roomId];
+      }
+    }
+    delete socketToRoom[socket.id];
+
+    socket.broadcast.emit('user-left', socket.id);
+    console.log(`❌ Socket disconnected: ${socket.id}`);
   });
 });
 
