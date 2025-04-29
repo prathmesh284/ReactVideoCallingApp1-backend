@@ -86,11 +86,15 @@ io.on('connection', (socket) => {
     socket.join(roomId);
     const clients = Array.from(io.sockets.adapter.rooms.get(roomId) || []);
     console.log(`Room ${roomId} clients:`, clients);
-
+  
+    // Inform the new user about the existing one
     if (clients.length > 1) {
-      socket.to(roomId).emit('other-user');
+      const otherUserId = clients.find(id => id !== socket.id);
+      socket.emit('user-joined', otherUserId); // 👈 tell the new client
+      socket.to(otherUserId).emit('user-joined', socket.id); // 👈 tell the existing client
     }
   });
+  
 
   socket.on('offer', ({ offer, roomId }) => {
     console.log('📨 Offer received and sent to room:', roomId);
