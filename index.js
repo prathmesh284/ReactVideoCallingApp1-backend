@@ -36,11 +36,19 @@ io.on('connection', (socket) => {
       socket.join(roomId);
     }
 
-    // Notify existing users in room
     const otherUser = room.find(id => id !== socket.id);
+
     if (otherUser) {
-      socket.emit('user-joined', otherUser);
-      io.to(otherUser).emit('user-joined', socket.id);
+      // Assign roles
+      socket.emit('user-joined', {
+        socketId: otherUser,
+        shouldCreateOffer: true, // new user creates offer
+      });
+
+      io.to(otherUser).emit('user-joined', {
+        socketId: socket.id,
+        shouldCreateOffer: false, // old user just listens/responds
+      });
     }
 
     console.log(`✅ ${socket.id} joined room ${roomId}`);
